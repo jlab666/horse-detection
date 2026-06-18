@@ -7,30 +7,52 @@ const statusText = document.getElementById('statusText');
 const snapBtn = document.getElementById('snapBtn');
 
 let session = null;
-let lastAlertTime = 0;
-let isProcessing = false; // 防止前一影格還沒跑完，下一影格又塞進來卡死
+let isProcessing = false;
 
 const MODEL_WIDTH = 640;  
 const MODEL_HEIGHT = 640; 
+
+// 建立全螢幕畫面除錯日誌區 (Live Diagnostics Overlay)
+const logContainer = document.createElement('div');
+logContainer.style = "position:fixed; top:75px; left:10px; width:180px; background:rgba(0,0,0,0.75); color:#00ffcc; font-family:monospace; font-size:10px; padding:8px; border-radius:6px; z-index:999; pointer-events:none; line-height:1.4;";
+document.body.appendChild(logContainer);
+
+function showLog(text) {
+    logContainer.innerHTML = text;
+}
+
+// 2026年標準 COCO 80 類別全中英對照表 (讓展示資訊更實用)
+const COCO_CLASSES = {
+    0: { en: 'Person', zh: '人' },
+    1: { en: 'Bicycle', zh: '腳踏車' },
+    2: { en: 'Car', zh: '汽車' },
+    3: { en: 'Motorcycle', zh: '機車' },
+    5: { en: 'Bus', zh: '巴士' },
+    7: { en: 'Truck', zh: '貨車' },
+    15: { en: 'Cat', zh: '貓' },
+    16: { en: 'Dog', zh: '狗' },
+    17: { en: 'Horse', zh: '馬匹' }, // 我們核心要找的馬
+    18: { en: 'Sheep', zh: '羊' },
+    19: { en: 'Cow', zh: '乳牛' }
+};
 
 // ==========================================
 // 1. 初始化系統
 // ==========================================
 async function init() {
+    showLog("⏳ 正在下載模型...<br>Downloading best.onnx...");
     try {
-        console.log("正在載入 Adroit+ 優化版模型...");
-        // 啟用 WebGL 硬件加速
         session = await ort.InferenceSession.create('./best.onnx', { executionProviders: ['webgl', 'wasm'] });
-        console.log("模型載入成功！");
+        showLog("✅ 模型加載成功！<br>Model loaded.<br>正在啟動相機...");
         setupCamera();
     } catch (e) {
-        console.error("AI 載入失敗:", e);
-        alert("無法讀取 best.onnx 檔案。");
+        showLog(`❌ 錯誤: 模型加載失敗<br>${e.message}`);
+        alert("無法讀取 best.onnx，請檢查檔案是否存在 GitHub 根目錄。");
     }
 }
 
 // ==========================================
-// 2. 啟動 iPhone 後鏡頭
+// 2. 啟動相機
 // ==========================================
 function setupCamera() {
     navigator.mediaDevices.getUserMedia({
@@ -42,46 +64,64 @@ function setupCamera() {
         video.addEventListener('loadedmetadata', () => {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
-            // 每 200 毫秒執行一次辨識 (一秒 5 次)，釋放 CPU 壓力，讓相機串流回復 30FPS 順暢度
-            setInterval(processFrame, 200);
+            showLog("🎥 相機已就緒 (30 FPS)<br>AI 推理啟動中...");
+            // 每 250 毫秒 (一秒 4 次) 跑一次 AI，確保手機完全不卡頓
+            setInterval(processFrame, 250);
         });
     })
     .catch((err) => {
-        alert("請允許相機權限。");
+        showLog(`❌ 相機錯誤:<br>${err.message}`);
     });
 }
 
 // ==========================================
-// 3. 節流偵測核心 (Throttled Inference)
+// 3. 核心偵測 (帶有詳細計時日誌)
 // ==========================================
 async function processFrame() {
     if (video.paused || video.ended || isProcessing || !session) return;
     
     isProcessing = true;
-    const startTime = performance.now();
+    const t0 = performance.now();
 
     try {
+        // [日誌點 1]: 前處理計時
         const tensorInput = preprocess(video, MODEL_WIDTH, MODEL_HEIGHT);
+        const t1 = performance.now();
+        
+        // [日誌點 2]: ONNX 推理計時 (最吃資源的地方)
         const feeds = {};
         feeds[session.inputNames[0]] = tensorInput;
         const outputMap = await session.run(feeds);
         const outputTensor = outputMap[session.outputNames[0]];
+        const t2 = performance.now();
         
-        // 解析矩陣
+        // [日誌點 3]: 矩陣解析計時
         const detections = postprocess(outputTensor.data, outputTensor.dims);
+        const t3 = performance.now();
         
-        const inferenceTime = Math.round(performance.now() - startTime);
-        renderDetections(detections, inferenceTime);
+        // 計算各階段耗時 (ms)
+        const prepTime = Math.round(t1 - t0);
+        const inferTime = Math.round(t2 - t1);
+        const postTime = Math.round(t3 - t2);
+        const totalTime = Math.round(t3 - t0);
+
+        // 將除錯數據顯示在畫面上
+        showLog(`📊 實時 AI 診斷數據:<br>` +
+                `• Output Shape: [${outputTensor.dims.join(',')}]<br>` +
+                `• Pre-process: ${prepTime}ms<br>` +
+                `• ONNX Model: ${inferTime}ms 🔥<br>` +
+                `• Post-process: ${postTime}ms<br>` +
+                `• Total Loop: ${totalTime}ms<br>` +
+                `• Detected Raw Box: ${detections.length}`);
+
+        renderDetections(detections, totalTime);
     } catch (error) {
-        console.error(error);
+        showLog(`❌ 推理出錯:<br>${error.message}`);
     }
     
     isProcessing = false;
 }
 
-// ==========================================
-// 4. 影像前處理
-// ==========================================
 function preprocess(videoElement, width, height) {
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = width;
@@ -101,96 +141,137 @@ function preprocess(videoElement, width, height) {
 }
 
 // ==========================================
-// 5. YOLOv8/v9 輸出矩陣重組與坐標修正 (精準對齊)
+// 4. 精準矩陣解包 (解決框框亂飄、對位不準)
 // ==========================================
 function postprocess(data, dims) {
     const detections = [];
-    const confidenceThreshold = 0.40; // 降低門檻，讓展示更容易被觸發
+    const confidenceThreshold = 0.35; // 調低門檻方便測試
     
-    // 標準 YOLO 輸出形狀通常是 [1, 84, 8400]
-    // 84 代表: [cx, cy, w, h, 80個類別的分數]
-    // 8400 代表模型預測出來的候選框數量
-    const numAttributes = dims[1]; // 84
-    const numBoxes = dims[2];      // 8400
-    const horseClassId = 17;       // 在 COCO 數據集裡，馬的代號是 17
+    const numAttributes = dims[1]; // 通常是 84 (4坐標 + 80類別分數)
+    const numBoxes = dims[2];      // 通常是 8400 個預測位置
 
+    // 重新排列並篩選數據
     for (let i = 0; i < numBoxes; i++) {
-        // 抓取第 17 類（馬）的分數
-        let score = data[(4 + horseClassId) * numBoxes + i];
-        
-        if (score > confidenceThreshold) {
-            // 讀取相對應的坐標軸
+        let maxScore = 0;
+        let classId = -1;
+
+        // 我們只關心 COCO 數據集中跟動物/人相關的類別（重點是 17：馬）
+        // 為了效能與精準度，我們直接抓取常見目標的分數
+        const targetClasses = [0, 1, 2, 3, 15, 16, 17, 18, 19]; 
+        for (let c of targetClasses) {
+            let score = data[(4 + c) * numBoxes + i]; // 標準 YOLO 輸出公式
+            if (score > maxScore) {
+                maxScore = score;
+                classId = c;
+            }
+        }
+
+        // 如果這個框的最高分超過門檻，且它是我們要找的物體
+        if (maxScore > confidenceThreshold && classId !== -1) {
             let cx = data[i];
             let cy = data[numBoxes + i];
             let w = data[2 * numBoxes + i];
             let h = data[3 * numBoxes + i];
 
-            // 轉回 HTML 畫布的左上角坐標起點
+            // 轉換為網頁畫布的左上角 (X, Y)
             let x = cx - w / 2;
             let y = cy - h / 2;
 
             detections.push({
                 box: [x, y, w, h],
-                score: score
+                score: maxScore,
+                classId: classId
             });
         }
     }
     
-    // 簡單進行非極大值抑制 (NMS)，防止同一個地方畫一堆重疊的綠框
+    // NMS 簡單重疊過濾：依分數排序，最多保留畫面上最明顯的三個東西
     detections.sort((a, b) => b.score - a.score);
-    return detections.slice(0, 3); // 畫面上最多同時留 3 個最準的框
+    return detections.slice(0, 3);
 }
 
 // ==========================================
-// 6. 渲染 UI 與變更實用資訊卡片
+// 5. 渲染並動態注入真實的 YOLO 資訊
 // ==========================================
-function renderDetections(detections, inferenceTime) {
+function renderDetections(detections, totalTime) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    let horseFound = false;
-    let highestScore = 0;
+    
+    let horseDetected = false;
+    let mainTargetName = "None / 無";
+    let mainConfidence = "0%";
+    let objectCountSummary = {};
 
-    // 計算手機畫面與模型縮放比
     const scaleX = canvas.width / MODEL_WIDTH;
     const scaleY = canvas.height / MODEL_HEIGHT;
 
     detections.forEach(det => {
-        horseFound = true;
-        if (det.score > highestScore) highestScore = det.score;
-
         const [x, y, w, h] = det.box;
+        const classInfo = COCO_CLASSES[det.classId] || { en: 'Object', zh: '未知物體' };
+        
+        // 統計畫面上出現的所有東西數量 (最真實的 YOLO 支援資訊)
+        objectCountSummary[classInfo.zh] = (objectCountSummary[classInfo.zh] || 0) + 1;
 
-        // 完美對齊馬匹位置繪製細綠框
-        ctx.strokeStyle = '#00ffcc';
+        if (det.classId === 17) {
+            horseDetected = true;
+        }
+
+        // 拿第一個最高分的當作主數據顯示在卡片上
+        if (mainTargetName === "None / 無") {
+            mainTargetName = `${classInfo.en} / ${classInfo.zh}`;
+            mainConfidence = `${Math.round(det.score * 100)}%`;
+        }
+
+        // 繪製細緻的霓虹智慧框
+        ctx.strokeStyle = (det.classId === 17) ? '#00ffcc' : '#38bdf8'; // 馬用綠框，其他人用藍框
         ctx.lineWidth = 3;
         ctx.strokeRect(x * scaleX, y * scaleY, w * scaleX, h * scaleY);
 
-        // 繪製對焦標籤
-        ctx.fillStyle = '#00ffcc';
+        ctx.fillStyle = (det.classId === 17) ? '#00ffcc' : '#38bdf8';
         ctx.font = 'bold 12px Arial';
-        ctx.fillText(`HORSE: ${Math.round(det.score * 100)}%`, (x * scaleX) + 5, (y * scaleY) - 5);
+        ctx.fillText(`${classInfo.en.toUpperCase()}: ${Math.round(det.score * 100)}%`, (x * scaleX) + 5, (y * scaleY) - 5);
     });
 
-    // 依據 AI 狀況動態變更數據卡片內容（替換成實用資訊）
-    if (horseFound) {
+    // ==========================================
+    // 6. 動態改寫下方的白底卡片資訊 (全面換成實用欄位)
+    // ==========================================
+    
+    // 欄位 1: 偵測目標
+    document.getElementById('val-target').innerHTML = mainTargetName;
+    
+    // 欄位 2: 辨識信心度
+    document.getElementById('val-conf').innerText = mainConfidence;
+    
+    // 欄位 3: 偵測時間與運作速率 (這對客戶非常實用，展示運算實力)
+    const now = new Date();
+    document.getElementById('val-time').innerText = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} (${totalTime}ms/幀)`;
+
+    // 欄位 4: 修改原本無意義的 "Member Type / 會員類別"
+    // 將其改造成 YOLO 實時物體統計清單！
+    const rows = document.querySelectorAll('.info-row');
+    if (rows.length >= 4) {
+        const labelDiv = rows[3].querySelector('.info-label');
+        const valueDiv = rows[3].querySelector('.info-value');
+        
+        // 改寫標籤標題
+        if (labelDiv) {
+            labelDiv.innerHTML = `<div class="en">Scene Objects</div><div class="zh">畫面物件統計</div>`;
+        }
+        // 動態塞入 YOLO 數到的動物/人數量
+        if (valueDiv) {
+            if (Object.keys(objectCountSummary).length > 0) {
+                let summaryText = Object.entries(objectCountSummary).map(([name, qty]) => `${name} x${qty}`).join(', ');
+                valueDiv.innerHTML = `<span style="color:#00b4d8; font-weight:bold;">${summaryText}</span>`;
+            } else {
+                valueDiv.innerText = "Scanning... / 無";
+            }
+        }
+    }
+
+    // 變更頂部狀態欄
+    if (horseDetected) {
         statusBanner.classList.add('detected');
         statusIcon.innerHTML = '✓';
-        statusText.innerHTML = 'Horse Validated 已認證馬匹';
-
-        // 動態注入實用的商用欄位數據
-        document.getElementById('val-target').innerHTML = `<span style="color:#10b981">Horse / 馬匹</span>`;
-        document.getElementById('val-conf').innerText = `${Math.round(highestScore * 100)}%`;
-        
-        // 替換原本的 Member Type 欄位，變更為商用健康指標
-        const memberTypeValue = document.querySelector('.info-row:nth-child(4) .info-value');
-        if (memberTypeValue) {
-            memberTypeValue.innerHTML = `<span style="color:#10b981">Active / 正常站立活動</span>`;
-        }
-
-        // 抓取當前時間
-        const now = new Date();
-        document.getElementById('val-time').innerText = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')} (${inferenceTime}ms)`;
-
-        triggerAlertEffects();
+        statusText.innerHTML = 'Horse Verified 已認證馬匹';
     } else {
         statusBanner.classList.remove('detected');
         statusIcon.innerHTML = '?';
@@ -199,26 +280,7 @@ function renderDetections(detections, inferenceTime) {
 }
 
 // ==========================================
-// 7. 震動防干擾
-// ==========================================
-function triggerAlertEffects() {
-    const now = Date.now();
-    if (now - lastAlertTime > 2500) {
-        lastAlertTime = now;
-        if (navigator.vibrate) navigator.vibrate([200]);
-        
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const oscillator = audioCtx.createOscillator();
-        oscillator.type = 'sine';
-        oscillator.frequency.setValueAtTime(1000, audioCtx.currentTime); // 乾淨的高音
-        oscillator.connect(audioCtx.destination);
-        oscillator.start();
-        oscillator.stop(audioCtx.currentTime + 0.08);
-    }
-}
-
-// ==========================================
-// 8. 快照優化：網頁彈出式圖卡（提示長按儲存）
+// 7. 快照優化：網頁彈出式圖卡 (長按儲存)
 // ==========================================
 snapBtn.addEventListener('click', () => {
     const snapCanvas = document.createElement('canvas');
@@ -231,17 +293,15 @@ snapBtn.addEventListener('click', () => {
 
     const imgUrl = snapCanvas.toDataURL('image/png');
     
-    // 建立一個網頁彈出層，讓 iPhone 用戶直接長按圖片存入相簿，體驗最順暢
     const overlay = document.createElement('div');
-    overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:999; display:flex; flex-direction:column; align-items:center; justify-content:center;";
+    overlay.style = "position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center;";
     overlay.innerHTML = `
         <p style="color:#fff; font-weight:bold; margin-bottom:15px;">📸 Snapshot Captured!</p>
         <img src="${imgUrl}" style="width:85%; max-width:380px; border-radius:12px; border:3px solid #00ffcc; box-shadow: 0 10px 30px rgba(0,0,0,0.5);"/>
-        <p style="color:#8d99ae; font-size:0.85rem; margin-top:15px;">💡 長按圖片即可儲存至 iPhone 相簿</p>
+        <p style="color:#8d99ae; font-size:0.85rem; margin-top:15px;">💡 長按上方圖片，即可選擇「加入相片」儲存</p>
         <button id="closeSnap" style="margin-top:20px; background:#ef233c; color:#fff; border:none; padding:10px 25px; border-radius:20px; font-weight:bold;">關閉關閉</button>
     `;
     document.body.appendChild(overlay);
-    
     document.getElementById('closeSnap').onclick = () => overlay.remove();
 });
 

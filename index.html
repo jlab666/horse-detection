@@ -10,7 +10,7 @@
             --card-bg: #ffffff;
             --text-dark: #2b2d42;
             --text-light: #8d99ae;
-            --accent-green: #00b4d8; /* 可依需求調整為 #00f5d4 或綠色 */
+            --accent-green: #00b4d8;
             --success-green: #10b981;
         }
 
@@ -27,18 +27,32 @@
             overflow-x: hidden;
         }
 
-        /* 頂部 Header & Logo */
+        /* 頂部 Header & Logo 優化防錯 */
         header {
             width: 100%;
             text-align: center;
             padding: 15px 0 5px 0;
             background: linear-gradient(to bottom, rgba(6,11,22,1), rgba(6,11,22,0.8));
         }
+        .logo-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 35px;
+        }
         .logo {
             height: 32px;
             object-fit: contain;
-            /* 如果在深色背景下黑字看不清，可利用 CSS 濾鏡將黑字部分轉為白字，保持漸變圖標不變 */
             filter: drop-shadow(0px 0px 1px rgba(255,255,255,0.8));
+        }
+        /* 當 Logo 圖檔不存在時，自動補全的科技感文字商標 */
+        .logo-text {
+            font-size: 1.6rem; 
+            font-weight: bold;
+            margin: 0;
+            background: linear-gradient(135deg, #00f5d4, #00b4d8); 
+            -webkit-background-clip: text; 
+            -webkit-text-fill-color: transparent;
         }
         .hint-text {
             font-size: 0.9rem;
@@ -67,18 +81,15 @@
         }
         #overlay { z-index: 10; }
 
-        /* 智慧對焦裝飾框 (四個角) */
+        /* 智慧掃描裝飾框 */
         .scanner-laser {
             position: absolute;
-            top: 20%; left: 15%; right: 15%; bottom: 20%;
-            border: 2px solid transparent;
+            top: 15%; left: 15%; right: 15%; bottom: 15%;
+            border: 1px dashed rgba(0, 255, 204, 0.3);
             z-index: 5;
             pointer-events: none;
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.1);
         }
-        .scanner-laser::before, .scanner-laser::after {
-            content: ''; position: absolute; width: 20px; height: 20px; border-color: #00ffcc; border-style: solid;
-        }
-        /* 左上右下角等線條繪製略過，由 JS 畫布或純 CSS 表現，此處預留結構 */
 
         /* 驗證警報狀態欄 */
         .status-banner { 
@@ -132,7 +143,7 @@
             background: var(--card-bg);
             border-radius: 16px;
             padding: 8px 16px;
-            margin: 0 auto 100px auto; /* 留空間給底部導航 */
+            margin: 0 auto 100px auto; 
             box-sizing: border-box;
             box-shadow: 0 10px 25px rgba(0,0,0,0.3);
         }
@@ -164,7 +175,7 @@
             text-align: right;
         }
 
-        /* 拍照按鈕浮動在卡片上方 */
+        /* 拍照快照按鈕 */
         .snap-action {
             text-align: center;
             margin-top: -15px;
@@ -175,10 +186,10 @@
             background: linear-gradient(135deg, #00f5d4, #00b4d8);
             color: #060b16;
             border: none;
-            padding: 10px 20px;
+            padding: 10px 25px;
             border-radius: 20px;
             font-weight: bold;
-            font-size: 0.9rem;
+            font-size: 0.95rem;
             box-shadow: 0 4px 12px rgba(0,245,212,0.4);
             cursor: pointer;
         }
@@ -202,7 +213,6 @@
             color: #64748b;
             font-size: 0.75rem;
             text-decoration: none;
-            cursor: pointer;
         }
         .nav-item.active {
             color: #38bdf8;
@@ -217,9 +227,11 @@
 <body>
 
     <header>
-        <!-- 引用你提供的 Adroit+ Logo -->
-        <img src="Adroit+ Logo-Horizontal-color-black.png" alt="Adroit+ Logo" class="logo">
-        <div class="hint-text">Position the horse within the frame</div>
+        <div class="logo-container">
+            <img src="Adroit+ Logo-Horizontal-color-black.png" alt="Adroit+ Logo" class="logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+            <h1 class="logo-text" style="display:none;">Adroit⁺ AI</h1>
+        </div>
+        <div class="hint-text">Position the object within the frame</div>
     </header>
 
     <div class="camera-container">
@@ -228,7 +240,6 @@
         <div class="scanner-laser"></div>
     </div>
 
-    <!-- 驗證狀態狀態欄 -->
     <div id="statusBanner" class="status-banner">
         <div id="statusIcon" class="status-icon">?</div>
         <div id="statusText" class="status-text">Scanning 掃描中...</div>
@@ -238,12 +249,11 @@
         <button id="snapBtn" class="snap-btn">📸 Take Snapshot 快照</button>
     </div>
 
-    <!-- 數據數據卡片 -->
     <div class="info-card">
         <div class="info-row">
             <div class="info-label">
                 <div class="en">Target Object</div>
-                <div class="zh">偵測目標</div>
+                <div class="zh">偵測主目標</div>
             </div>
             <div id="val-target" class="info-value">None / 無</div>
         </div>
@@ -256,21 +266,20 @@
         </div>
         <div class="info-row">
             <div class="info-label">
-                <div class="en">Detection Date & Time</div>
-                <div class="zh">偵測日期及時間</div>
+                <div class="en">Inference Speed</div>
+                <div class="zh">偵測速率與時間</div>
             </div>
             <div id="val-time" class="info-value">-- : --</div>
         </div>
         <div class="info-row">
             <div class="info-label">
-                <div class="en">Member Type</div>
-                <div class="zh">會員類別</div>
+                <div class="en">Scene Objects</div>
+                <div class="zh">畫面物件統計</div>
             </div>
-            <div class="info-value" style="color: #6366f1;">Owner / 馬主</div>
+            <div class="info-value" style="color: #64748b;">Scanning...</div>
         </div>
     </div>
 
-    <!-- 底部導航欄 (還原 584.png 樣式) -->
     <div class="bottom-nav">
         <div class="nav-item active">
             <div class="nav-icon">🔍</div>
