@@ -2,29 +2,62 @@
 <html lang="zh-Hant">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>馬匹辨識 PoC (YOLOv9 Web App)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Adroit+ Horse Detection</title>
     <style>
+        :root {
+            --bg-color: #060b16;
+            --card-bg: #ffffff;
+            --text-dark: #2b2d42;
+            --text-light: #8d99ae;
+            --accent-green: #00b4d8; /* 可依需求調整為 #00f5d4 或綠色 */
+            --success-green: #10b981;
+        }
+
         body { 
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-            background: #121212; 
+            background: var(--bg-color); 
             color: #fff; 
-            text-align: center; 
             margin: 0; 
-            padding: 20px; 
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
         }
-        .container { 
+
+        /* 頂部 Header & Logo */
+        header {
+            width: 100%;
+            text-align: center;
+            padding: 15px 0 5px 0;
+            background: linear-gradient(to bottom, rgba(6,11,22,1), rgba(6,11,22,0.8));
+        }
+        .logo {
+            height: 32px;
+            object-fit: contain;
+            /* 如果在深色背景下黑字看不清，可利用 CSS 濾鏡將黑字部分轉為白字，保持漸變圖標不變 */
+            filter: drop-shadow(0px 0px 1px rgba(255,255,255,0.8));
+        }
+        .hint-text {
+            font-size: 0.9rem;
+            color: #d1d5db;
+            margin: 8px 0 0 0;
+            letter-spacing: 0.5px;
+        }
+
+        /* 相機容器 */
+        .camera-container { 
             position: relative; 
             width: 100%; 
-            max-width: 640px; 
-            height: 480px; 
-            margin: 20px auto; 
+            max-width: 450px; 
+            height: 320px; 
+            margin: 10px auto 0 auto;
             background: #000; 
-            border-radius: 12px; 
             overflow: hidden; 
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
         }
-        video, canvas { 
+        video, #overlay { 
             position: absolute; 
             top: 0; 
             left: 0; 
@@ -32,57 +65,229 @@
             height: 100%; 
             object-fit: cover;
         }
-        canvas { 
-            z-index: 10; 
+        #overlay { z-index: 10; }
+
+        /* 智慧對焦裝飾框 (四個角) */
+        .scanner-laser {
+            position: absolute;
+            top: 20%; left: 15%; right: 15%; bottom: 20%;
+            border: 2px solid transparent;
+            z-index: 5;
+            pointer-events: none;
         }
-        #alertBanner { 
-            display: none; 
-            background: #ff3333; 
-            color: white; 
-            padding: 15px; 
-            font-weight: bold; 
-            font-size: 1.3rem; 
-            border-radius: 8px; 
-            margin-bottom: 15px; 
-            animation: blink 1s infinite;
+        .scanner-laser::before, .scanner-laser::after {
+            content: ''; position: absolute; width: 20px; height: 20px; border-color: #00ffcc; border-style: solid;
         }
-        @keyframes blink {
-            0% { opacity: 1; }
-            50% { opacity: 0.5; }
-            100% { opacity: 1; }
+        /* 左上右下角等線條繪製略過，由 JS 畫布或純 CSS 表現，此處預留結構 */
+
+        /* 驗證警報狀態欄 */
+        .status-banner { 
+            width: 90%;
+            max-width: 410px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 15px;
+            margin: 15px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
         }
-        .controls { 
-            margin-top: 20px; 
+        .status-banner.detected {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: var(--success-green);
         }
-        button { 
-            background: #007bff; 
-            color: white; 
-            border: none; 
-            padding: 12px 24px; 
-            font-size: 1rem; 
-            border-radius: 8px; 
-            cursor: pointer; 
+        .status-icon {
+            width: 28px; height: 28px;
+            background: #374151;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #9ca3af;
             font-weight: bold;
-            transition: background 0.2s;
+            transition: all 0.3s;
         }
-        button:hover { 
-            background: #0056b3; 
+        .status-banner.detected .status-icon {
+            background: var(--success-green);
+            color: white;
+        }
+        .status-text {
+            font-size: 1.15rem;
+            font-weight: bold;
+            color: #9ca3af;
+        }
+        .status-banner.detected .status-text {
+            color: var(--success-green);
+        }
+
+        /* 數據資訊卡片 (白底) */
+        .info-card {
+            width: 90%;
+            max-width: 410px;
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 8px 16px;
+            margin: 0 auto 100px auto; /* 留空間給底部導航 */
+            box-sizing: border-box;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 14px 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-label {
+            text-align: left;
+        }
+        .info-label .en {
+            font-size: 0.95rem;
+            color: var(--text-dark);
+            font-weight: 600;
+        }
+        .info-label .zh {
+            font-size: 0.8rem;
+            color: var(--text-light);
+            margin-top: 2px;
+        }
+        .info-value {
+            font-size: 1.05rem;
+            color: var(--text-dark);
+            font-weight: 700;
+            text-align: right;
+        }
+
+        /* 拍照按鈕浮動在卡片上方 */
+        .snap-action {
+            text-align: center;
+            margin-top: -15px;
+            margin-bottom: 15px;
+            z-index: 20;
+        }
+        .snap-btn {
+            background: linear-gradient(135deg, #00f5d4, #00b4d8);
+            color: #060b16;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+            box-shadow: 0 4px 12px rgba(0,245,212,0.4);
+            cursor: pointer;
+        }
+
+        /* 底部導航列 */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            height: 70px;
+            background: #0b132b;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            z-index: 100;
+        }
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: #64748b;
+            font-size: 0.75rem;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        .nav-item.active {
+            color: #38bdf8;
+        }
+        .nav-icon {
+            font-size: 1.4rem;
+            margin-bottom: 4px;
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 </head>
 <body>
 
-    <h1>🐎 即時馬匹偵測系統 (YOLOv9)</h1>
-    <div id="alertBanner">⚠️ 偵測到馬匹 ⚠️</div>
+    <header>
+        <!-- 引用你提供的 Adroit+ Logo -->
+        <img src="Adroit+ Logo-Horizontal-color-black.png" alt="Adroit+ Logo" class="logo">
+        <div class="hint-text">Position the horse within the frame</div>
+    </header>
 
-    <div class="container">
+    <div class="camera-container">
         <video id="webcam" autoplay playsinline muted></video>
         <canvas id="overlay"></canvas>
+        <div class="scanner-laser"></div>
     </div>
 
-    <div class="controls">
-        <button id="snapBtn">📸 拍攝快照 (儲存至本機)</button>
+    <!-- 驗證狀態狀態欄 -->
+    <div id="statusBanner" class="status-banner">
+        <div id="statusIcon" class="status-icon">?</div>
+        <div id="statusText" class="status-text">Scanning 掃描中...</div>
+    </div>
+
+    <div class="snap-action">
+        <button id="snapBtn" class="snap-btn">📸 Take Snapshot 快照</button>
+    </div>
+
+    <!-- 數據數據卡片 -->
+    <div class="info-card">
+        <div class="info-row">
+            <div class="info-label">
+                <div class="en">Target Object</div>
+                <div class="zh">偵測目標</div>
+            </div>
+            <div id="val-target" class="info-value">None / 無</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">
+                <div class="en">Confidence Score</div>
+                <div class="zh">辨識信心度</div>
+            </div>
+            <div id="val-conf" class="info-value">0%</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">
+                <div class="en">Detection Date & Time</div>
+                <div class="zh">偵測日期及時間</div>
+            </div>
+            <div id="val-time" class="info-value">-- : --</div>
+        </div>
+        <div class="info-row">
+            <div class="info-label">
+                <div class="en">Member Type</div>
+                <div class="zh">會員類別</div>
+            </div>
+            <div class="info-value" style="color: #6366f1;">Owner / 馬主</div>
+        </div>
+    </div>
+
+    <!-- 底部導航欄 (還原 584.png 樣式) -->
+    <div class="bottom-nav">
+        <div class="nav-item active">
+            <div class="nav-icon">🔍</div>
+            <div>Scan</div>
+        </div>
+        <div class="nav-item">
+            <div class="nav-icon">🕒</div>
+            <div>History</div>
+        </div>
+        <div class="nav-item">
+            <div class="nav-icon">📅</div>
+            <div>Bookings</div>
+        </div>
+        <div class="nav-item">
+            <div class="nav-icon">⚙️</div>
+            <div>Settings</div>
+        </div>
     </div>
 
     <script src="app.js"></script>
