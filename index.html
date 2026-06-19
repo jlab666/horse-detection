@@ -25,7 +25,6 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        /* 頂部高科技動態狀態列 */
         #statusBanner {
             position: fixed;
             top: 0;
@@ -53,7 +52,6 @@
             letter-spacing: 0.5px;
         }
 
-        /* 主視訊區域架構 */
         #container {
             position: relative;
             width: 100vw;
@@ -79,7 +77,6 @@
             pointer-events: none;
         }
 
-        /* 實時快捷快照按鈕 */
         #snapBtn {
             position: absolute;
             right: 15px;
@@ -103,7 +100,6 @@
         }
         #snapBtn:active { transform: scale(0.9); }
 
-        /* 工業級白底數據儀表板卡片 */
         .info-card {
             margin: 15px;
             background: var(--card-bg);
@@ -143,14 +139,52 @@
             font-family: -apple-system-font, monospace;
         }
 
-        /* 頁尾版權宣告 */
-        .footer {
-            text-align: center;
-            font-size: 11px;
-            color: #475569;
-            margin: 25px 0;
+        #horse-profile-panel {
+            margin: 15px;
+            background: var(--card-bg);
+            border-radius: 14px;
+            padding: 16px;
+            box-sizing: border-box;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            color: var(--text-main);
+            display: none;
+        }
+
+        #horse-profile-panel h4 {
+            margin: 0 0 12px 0;
+            color: var(--danger-red);
+            font-size: 12px;
             font-family: monospace;
             letter-spacing: 0.5px;
+            text-transform: uppercase;
+            border-bottom: 2px solid #cbd5e1;
+            padding-bottom: 8px;
+        }
+
+        .profile-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+
+        .profile-item {
+            border-bottom: 1px solid #f1f5f9;
+            padding-bottom: 10px;
+        }
+        .profile-item:last-child { border-bottom: none; }
+
+        .profile-label {
+            font-size: 11px;
+            color: #64748b;
+            font-family: monospace;
+            text-transform: uppercase;
+        }
+        .profile-value {
+            font-size: 14px;
+            font-weight: bold;
+            color: #1e293b;
+            font-family: monospace;
+            margin-top: 2px;
         }
     </style>
 </head>
@@ -189,25 +223,45 @@
             </div>
             <div id="val-time" class="info-value">0 ms</div>
         </div>
-        
-        <div id="horse-profile-panel" style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #cbd5e1; display: none;">
-            <h4 style="margin: 0 0 12px 0; color: #ef233c; font-size: 12px; font-family: monospace; letter-spacing: 0.5px;">📋 HKJC OFFICIAL PROFILE / 馬匹身分證</h4>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px; font-family: monospace;">
-                <div><span style="color:#64748b;">烙印編號:</span> <span id="prof-brand" style="font-weight:bold;">-</span></div>
-                <div><span style="color:#64748b;">引進類型:</span> <span id="prof-type">-</span></div>
-                <div><span style="color:#64748b;">年齡/性別:</span> <span id="prof-age">-</span></div>
-                <div><span style="color:#64748b;">出生國家:</span> <span id="prof-origin">-</span></div>
-                <div style="grid-column: span 2;"><span style="color:#64748b;">父系血統:</span> <span id="prof-sire" style="color:#0077b6; font-weight:bold;">-</span></div>
-                <div style="grid-column: span 2;"><span style="color:#64748b;">登記馬主:</span> <span id="prof-owner" style="font-weight:bold;">-</span></div>
+    </div>
+
+    <div id="horse-profile-panel">
+        <h4>📋 HKJC OFFICIAL PROFILE / 馬匹身分證</h4>
+        <div class="profile-grid">
+            <div class="profile-item">
+                <div class="profile-label">烙印編號 / Brand No.</div>
+                <div id="prof-brand" class="profile-value">-</div>
+            </div>
+            <div class="profile-item">
+                <div class="profile-label">引進類型 / Import Type</div>
+                <div id="prof-type" class="profile-value">-</div>
+            </div>
+            <div class="profile-item">
+                <div class="profile-label">年齡/性別 / Age/Sex</div>
+                <div id="prof-age" class="profile-value">-</div>
+            </div>
+            <div class="profile-item">
+                <div class="profile-label">出生國家 / Origin</div>
+                <div id="prof-origin" class="profile-value">-</div>
+            </div>
+            <div class="profile-item">
+                <div class="profile-label">父系血統 / Sire</div>
+                <div id="prof-sire" class="profile-value" style="color:#0077b6;">-</div>
+            </div>
+            <div class="profile-item">
+                <div class="profile-label">登記馬主 / Owner</div>
+                <div id="prof-owner" class="profile-value">-</div>
             </div>
         </div>
-        
-        <div class="info-row" style="margin-top: 12px;">
+    </div>
+
+    <div class="info-card">
+        <div class="info-row">
             <div class="info-label">
-                <div class="en">Scene Counter</div>
+                <div class="en">Scene Objects</div>
                 <div class="zh">視野物件統計</div>
             </div>
-            <div id="val-counter" class="info-value" style="color: #64748b;">Scanning...</div>
+            <div id="val-counter" class="info-value">Scanning...</div>
         </div>
     </div>
 
