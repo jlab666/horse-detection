@@ -1,3 +1,4 @@
+// app.js
 const video = document.getElementById('webcam');
 const canvas = document.getElementById('overlay');
 const ctx = canvas.getContext('2d');
@@ -20,20 +21,20 @@ function showLog(text) {
     logContainer.innerHTML = text;
 }
 
-// 精準定義對應原廠 COCO 80 類別的馬與車
+// 精準對應融合模型內 [1, 84, 8400] 矩陣中的馬與車
 const TARGET_CLASSES = {
-    17: { en: 'Horse', zh: '馬匹', color: '#00ffcc' },     // 馬：綠框
-    2:  { en: 'Car', zh: '管制車輛', color: '#38bdf8' },   // 汽車：藍框
+    17: { en: 'Horse', zh: '馬匹', color: '#00ffcc' },     // 馬：綠框 (已注入 Kaggle 靈魂)
+    2:  { en: 'Car', zh: '管制車輛', color: '#38bdf8' },   // 汽車：藍框 (原廠繼承)
     3:  { en: 'Motorcycle', zh: '管制車輛', color: '#38bdf8' }, // 機車
     5:  { en: 'Bus', zh: '管制車輛', color: '#38bdf8' },  // 巴士
     7:  { en: 'Truck', zh: '管制車輛', color: '#38bdf8' }  // 卡車
 };
 
 async function init() {
-    showLog("⏳ 載入 Adroit+ 智慧馬場晶片...<br>Loading Nano Model...");
+    showLog("⏳ 載入 Adroit+ 融合晶片...<br>Loading Joint Nano Model...");
     try {
         session = await ort.InferenceSession.create('./best.onnx', { executionProviders: ['webgl', 'wasm'] });
-        showLog("✅ Nano 晶片載入成功！<br>Model ready.<br>相機啟動中...");
+        showLog("✅ 融合晶片載入成功！<br>Model ready.<br>相機啟動中...");
         setupCamera();
     } catch (e) {
         showLog(`❌ 載入失敗: ${e.message}`);
@@ -51,7 +52,7 @@ function setupCamera() {
             canvas.width = video.videoWidth;
             canvas.height = video.videoHeight;
             showLog("🎥 系統已就緒 (30 FPS)<br>雙效安防鎖定中...");
-            setInterval(processFrame, 80); // Nano 模型極快，一秒可跑 12 次
+            setInterval(processFrame, 80); 
         });
     })
     .catch((err) => { showLog(`❌ 相機錯誤: ${err.message}`); });
@@ -72,9 +73,9 @@ async function processFrame() {
         const detections = postprocess(outputTensor.data, outputTensor.dims);
         const totalTime = Math.round(performance.now() - t0);
 
-        showLog(`📊 Adroit+ 實時效能數據:<br>` +
-                `• 模型架構: YOLOv8-Nano-Pretrained<br>` +
-                `• 輸出維度: [${outputTensor.dims.join(',')}]<br>` +
+        showLog(`📊 Adroit+ 最終權重數據:<br>` +
+                `• 模型來源: Kaggle+COCO 知識融合<br>` +
+                `• 輸出維度: [${outputTensor.dims.join(',')}] 🔥<br>` +
                 `• 推理速率: ${totalTime}ms / 幀 🚀<br>` +
                 `• 全局狀態: 30 FPS 極度流暢`);
 
@@ -98,7 +99,7 @@ function preprocess(videoElement, width, height) {
     return new ort.Tensor('float32', float32Buffer, [1, 3, width, height]);
 }
 
-// 完美適配原廠 [1, 84, 8400] 輸出矩陣，只撈出馬與車
+// 完美過濾標準 [1, 84, 8400] 矩陣，指名抓出馬與車
 function postprocess(data, dims) {
     const detections = [];
     const confidenceThreshold = 0.40; 
@@ -110,7 +111,6 @@ function postprocess(data, dims) {
         let maxScore = 0;
         let classId = -1;
 
-        // 我們只關心設定好的馬(17)與各類車輛(2,3,5,7)
         const activeIds = [17, 2, 3, 5, 7];
         for (let c of activeIds) {
             let score = data[(4 + c) * numBoxes + i];
@@ -142,7 +142,7 @@ function renderDetections(detections, totalTime) {
     let carDetected = false;
     let mainTargetName = "None / 無";
     let mainConfidence = "0%";
-    let summaryCounts = { '馬批': 0, '管制車輛': 0 };
+    let summaryCounts = { '馬匹': 0, '管制車輛': 0 };
 
     const scaleX = canvas.width / MODEL_WIDTH;
     const scaleY = canvas.height / MODEL_HEIGHT;
@@ -154,7 +154,7 @@ function renderDetections(detections, totalTime) {
         if (det.classId === 17) horseDetected = true;
         if ([2, 3, 5, 7].includes(det.classId)) carDetected = true;
 
-        const labelKey = (det.classId === 17) ? '馬批' : '管制車輛';
+        const labelKey = (det.classId === 17) ? '馬匹' : '管制車輛';
         summaryCounts[labelKey]++;
 
         if (mainTargetName === "None / 無") {
@@ -179,9 +179,9 @@ function renderDetections(detections, totalTime) {
     if (rows.length >= 4) {
         const valueDiv = rows[3].querySelector('.info-value');
         if (valueDiv) {
-            if (summaryCounts['馬批'] > 0 || summaryCounts['管制車輛'] > 0) {
+            if (summaryCounts['馬匹'] > 0 || summaryCounts['管制車輛'] > 0) {
                 let displayTexts = [];
-                if (summaryCounts['馬批'] > 0) displayTexts.push(`馬匹 x${summaryCounts['馬批']}`);
+                if (summaryCounts['馬匹'] > 0) displayTexts.push(`馬匹 x${summaryCounts['馬匹']}`);
                 if (summaryCounts['管制車輛'] > 0) displayTexts.push(`車輛 x${summaryCounts['管制車輛']}`);
                 valueDiv.innerHTML = `<span style="color:#00b4d8; font-weight:bold;">${displayTexts.join(' | ')}</span>`;
             } else { valueDiv.innerText = "Scanning... / 安全"; }
@@ -191,9 +191,9 @@ function renderDetections(detections, totalTime) {
     if (horseDetected || carDetected) {
         statusBanner.classList.add('detected');
         statusIcon.innerHTML = '✓';
-        if (horseDetected && carDetected) { statusText.innerHTML = '🎯 馬匹與車輛同步鎖定'; }
-        else if (horseDetected) { statusText.innerHTML = '🐎 Horse Verified 馬匹已認證'; }
-        else { statusText.innerHTML = '🚗 Vehicle Security 車輛管制中'; }
+        if (horseDetected && carDetected) { statusText.innerHTML = '🎯 馬匹與進出車輛同步鎖定'; }
+        else if (horseDetected) { statusText.innerHTML = '🐎 [Kaggle 融合] 馬匹已認證'; }
+        else { statusText.innerHTML = '🚗 [原廠繼承] 車輛管制中'; }
     } else {
         statusBanner.classList.remove('detected');
         statusIcon.innerHTML = '?';
@@ -201,7 +201,7 @@ function renderDetections(detections, totalTime) {
     }
 }
 
-// 快照
+// 快照功能
 snapBtn.addEventListener('click', () => {
     const snapCanvas = document.createElement('canvas');
     snapCanvas.width = canvas.width; snapCanvas.height = canvas.height;
