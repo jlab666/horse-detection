@@ -1,265 +1,183 @@
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Adroit+ Horse Detection</title>
+    <title>Adroit+ 智慧馬場雙效安防系統</title>
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <style>
         :root {
-            --bg-color: #060b16;
+            --bg-dark: #0f172a;
             --card-bg: #ffffff;
-            --text-dark: #2b2d42;
-            --text-light: #8d99ae;
-            --accent-green: #00b4d8;
-            --success-green: #10b981;
+            --accent-cyan: #00ffcc;
+            --accent-blue: #38bdf8;
+            --danger-red: #ef233c;
+            --text-main: #1e293b;
         }
 
-        body { 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-            background: var(--bg-color); 
-            color: #fff; 
-            margin: 0; 
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-
-        /* 頂部 Header & Logo 優化防錯 */
-        header {
-            width: 100%;
-            text-align: center;
-            padding: 15px 0 5px 0;
-            background: linear-gradient(to bottom, rgba(6,11,22,1), rgba(6,11,22,0.8));
-        }
-        .logo-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 35px;
-        }
-        .logo {
-            height: 32px;
-            object-fit: contain;
-            filter: drop-shadow(0px 0px 1px rgba(255,255,255,0.8));
-        }
-        /* 當 Logo 圖檔不存在時，自動補全的科技感文字商標 */
-        .logo-text {
-            font-size: 1.6rem; 
-            font-weight: bold;
+        body {
             margin: 0;
-            background: linear-gradient(135deg, #00f5d4, #00b4d8); 
-            -webkit-background-clip: text; 
-            -webkit-text-fill-color: transparent;
+            padding: 0;
+            background-color: var(--bg-dark);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: #ffffff;
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
         }
-        .hint-text {
-            font-size: 0.9rem;
-            color: #d1d5db;
-            margin: 8px 0 0 0;
+
+        /* 頂部高科技動態狀態列 */
+        #statusBanner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 60px;
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            box-sizing: border-box;
+            z-index: 1000;
+            transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        #statusIcon {
+            font-size: 20px;
+            margin-right: 12px;
+        }
+
+        #statusText {
+            font-size: 14px;
+            font-weight: 600;
             letter-spacing: 0.5px;
         }
 
-        /* 相機容器 */
-        .camera-container { 
-            position: relative; 
-            width: 100%; 
-            max-width: 450px; 
-            height: 320px; 
-            margin: 10px auto 0 auto;
-            background: #000; 
-            overflow: hidden; 
+        /* 主視訊區域架構 */
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 70vw;
+            max-height: 480px;
+            margin-top: 60px;
+            background: #000;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.4);
         }
-        video, #overlay { 
-            position: absolute; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            height: 100%; 
+
+        #webcam {
+            width: 100%;
+            height: 100%;
             object-fit: cover;
         }
-        #overlay { z-index: 10; }
 
-        /* 智慧掃描裝飾框 */
-        .scanner-laser {
+        #overlay {
             position: absolute;
-            top: 15%; left: 15%; right: 15%; bottom: 15%;
-            border: 1px dashed rgba(0, 255, 204, 0.3);
-            z-index: 5;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
-            box-shadow: 0 0 15px rgba(0, 255, 204, 0.1);
         }
 
-        /* 驗證警報狀態欄 */
-        .status-banner { 
-            width: 90%;
-            max-width: 410px;
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-            border-radius: 12px;
-            padding: 15px;
-            margin: 15px auto;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 12px;
-            box-sizing: border-box;
-            transition: all 0.3s ease;
-        }
-        .status-banner.detected {
-            background: rgba(16, 185, 129, 0.15);
-            border-color: var(--success-green);
-        }
-        .status-icon {
-            width: 28px; height: 28px;
-            background: #374151;
+        /* 實時快捷快照按鈕 */
+        #snapBtn {
+            position: absolute;
+            right: 15px;
+            bottom: 15px;
+            width: 48px;
+            height: 48px;
             border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            border: 2px solid #ffffff;
+            color: #ffffff;
+            font-size: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #9ca3af;
-            font-weight: bold;
-            transition: all 0.3s;
+            cursor: pointer;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 10;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: transform 0.1s ease;
         }
-        .status-banner.detected .status-icon {
-            background: var(--success-green);
-            color: white;
-        }
-        .status-text {
-            font-size: 1.15rem;
-            font-weight: bold;
-            color: #9ca3af;
-        }
-        .status-banner.detected .status-text {
-            color: var(--success-green);
+        #snapBtn:active { transform: scale(0.9); }
+
+        /* 工業級白底數據儀表板卡片 */
+        .info-card {
+            margin: 15px;
+            background: var(--card-bg);
+            border-radius: 14px;
+            padding: 16px;
+            box-sizing: border-box;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            color: var(--text-main);
         }
 
-        /* 數據資訊卡片 (白底) */
-        .info-card {
-            width: 90%;
-            max-width: 410px;
-            background: var(--card-bg);
-            border-radius: 16px;
-            padding: 8px 16px;
-            margin: 0 auto 100px auto; 
-            box-sizing: border-box;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-        }
         .info-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 14px 0;
-            border-bottom: 1px solid #f3f4f6;
+            padding: 10px 0;
+            border-bottom: 1px solid #f1f5f9;
         }
         .info-row:last-child { border-bottom: none; }
-        .info-label {
-            text-align: left;
-        }
+
         .info-label .en {
-            font-size: 0.95rem;
-            color: var(--text-dark);
-            font-weight: 600;
+            font-size: 11px;
+            color: #64748b;
+            font-weight: 500;
+            text-transform: uppercase;
         }
         .info-label .zh {
-            font-size: 0.8rem;
-            color: var(--text-light);
-            margin-top: 2px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #334155;
+            margin-top: 1px;
         }
+
         .info-value {
-            font-size: 1.05rem;
-            color: var(--text-dark);
+            font-size: 15px;
             font-weight: 700;
-            text-align: right;
+            color: #0f172a;
+            font-family: -apple-system-font, monospace;
         }
 
-        /* 拍照快照按鈕 */
-        .snap-action {
+        /* 頁尾版權宣告 */
+        .footer {
             text-align: center;
-            margin-top: -15px;
-            margin-bottom: 15px;
-            z-index: 20;
-        }
-        .snap-btn {
-            background: linear-gradient(135deg, #00f5d4, #00b4d8);
-            color: #060b16;
-            border: none;
-            padding: 10px 25px;
-            border-radius: 20px;
-            font-weight: bold;
-            font-size: 0.95rem;
-            box-shadow: 0 4px 12px rgba(0,245,212,0.4);
-            cursor: pointer;
-        }
-
-        /* 底部導航列 */
-        .bottom-nav {
-            position: fixed;
-            bottom: 0; left: 0; right: 0;
-            height: 70px;
-            background: #0b132b;
-            border-top: 1px solid rgba(255,255,255,0.08);
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
-            z-index: 100;
-        }
-        .nav-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            color: #64748b;
-            font-size: 0.75rem;
-            text-decoration: none;
-        }
-        .nav-item.active {
-            color: #38bdf8;
-        }
-        .nav-icon {
-            font-size: 1.4rem;
-            margin-bottom: 4px;
+            font-size: 11px;
+            color: #475569;
+            margin: 25px 0;
+            font-family: monospace;
+            letter-spacing: 0.5px;
         }
     </style>
-    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
 </head>
 <body>
 
-    <header>
-        <div class="logo-container">
-            <img src="Adroit+ Logo-Horizontal-color-black.png" alt="Adroit+ Logo" class="logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-            <h1 class="logo-text" style="display:none;">Adroit⁺ AI</h1>
-        </div>
-        <div class="hint-text">Position the object within the frame</div>
-    </header>
+    <div id="statusBanner">
+        <div id="statusIcon">🔍</div>
+        <div id="statusText">Adroit+ 香港核心實時掃描中...</div>
+    </div>
 
-    <div class="camera-container">
+    <div id="container">
         <video id="webcam" autoplay playsinline muted></video>
         <canvas id="overlay"></canvas>
-        <div class="scanner-laser"></div>
-    </div>
-
-    <div id="statusBanner" class="status-banner">
-        <div id="statusIcon" class="status-icon">?</div>
-        <div id="statusText" class="status-text">Scanning 掃描中...</div>
-    </div>
-
-    <div class="snap-action">
-        <button id="snapBtn" class="snap-btn">📸 Take Snapshot 快照</button>
+        <button id="snapBtn">📸</button>
     </div>
 
     <div class="info-card">
         <div class="info-row">
             <div class="info-label">
-                <div class="en">Target Object</div>
-                <div class="zh">偵測主目標</div>
+                <div class="en">Target Locked</div>
+                <div class="zh">鎖定目標</div>
             </div>
             <div id="val-target" class="info-value">None / 無</div>
         </div>
         <div class="info-row">
             <div class="info-label">
-                <div class="en">Confidence Score</div>
+                <div class="en">Confidence</div>
                 <div class="zh">辨識信心度</div>
             </div>
             <div id="val-conf" class="info-value">0%</div>
@@ -267,37 +185,33 @@
         <div class="info-row">
             <div class="info-label">
                 <div class="en">Inference Speed</div>
-                <div class="zh">偵測速率與時間</div>
+                <div class="zh">運算速率</div>
             </div>
-            <div id="val-time" class="info-value">-- : --</div>
+            <div id="val-time" class="info-value">0 ms</div>
         </div>
-        <div class="info-row">
-            <div class="info-label">
-                <div class="en">Scene Objects</div>
-                <div class="zh">畫面物件統計</div>
+        
+        <div id="horse-profile-panel" style="margin-top: 15px; padding-top: 15px; border-top: 1px dashed #cbd5e1; display: none;">
+            <h4 style="margin: 0 0 12px 0; color: #ef233c; font-size: 12px; font-family: monospace; letter-spacing: 0.5px;">📋 HKJC OFFICIAL PROFILE / 馬匹身分證</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 12px; font-family: monospace;">
+                <div><span style="color:#64748b;">烙印編號:</span> <span id="prof-brand" style="font-weight:bold;">-</span></div>
+                <div><span style="color:#64748b;">引進類型:</span> <span id="prof-type">-</span></div>
+                <div><span style="color:#64748b;">年齡/性別:</span> <span id="prof-age">-</span></div>
+                <div><span style="color:#64748b;">出生國家:</span> <span id="prof-origin">-</span></div>
+                <div style="grid-column: span 2;"><span style="color:#64748b;">父系血統:</span> <span id="prof-sire" style="color:#0077b6; font-weight:bold;">-</span></div>
+                <div style="grid-column: span 2;"><span style="color:#64748b;">登記馬主:</span> <span id="prof-owner" style="font-weight:bold;">-</span></div>
             </div>
-            <div class="info-value" style="color: #64748b;">Scanning...</div>
+        </div>
+        
+        <div class="info-row" style="margin-top: 12px;">
+            <div class="info-label">
+                <div class="en">Scene Counter</div>
+                <div class="zh">視野物件統計</div>
+            </div>
+            <div id="val-counter" class="info-value" style="color: #64748b;">Scanning...</div>
         </div>
     </div>
 
-    <div class="bottom-nav">
-        <div class="nav-item active">
-            <div class="nav-icon">🔍</div>
-            <div>Scan</div>
-        </div>
-        <div class="nav-item">
-            <div class="nav-icon">🕒</div>
-            <div>History</div>
-        </div>
-        <div class="nav-item">
-            <div class="nav-icon">📅</div>
-            <div>Bookings</div>
-        </div>
-        <div class="nav-item">
-            <div class="nav-icon">⚙️</div>
-            <div>Settings</div>
-        </div>
-    </div>
+    <div class="footer">ADROIT+ EDGE SECURITY SYSTEMS v2.0</div>
 
     <script src="app.js"></script>
 </body>
